@@ -191,7 +191,7 @@
               <div className="bg-yellow-500 p-1.5 rounded text-slate-900">
                 <Lightbulb size={20} strokeWidth={2.5} />
               </div>
-              <span>創意思考教學演示系統</span>
+              <span>創意思考教學演示系統-如何讓午餐時間更有趣</span>
             </div>
             <div className="flex gap-2 bg-slate-800 p-1 rounded-lg">
               <button 
@@ -466,9 +466,11 @@
                                     style = {
                                         left: `${groupX}%`,
                                         top: `${groupY}%`,
-                                        marginLeft: `${(itemCol === 0 ? -1 : 1) * 20}px`,
-                                        marginTop: `${(itemRow * 18) - 30}px`,
-                                        transform: `translate(-50%, -50%) rotate(${item.itemIdx % 2 === 0 ? -2 : 2}deg) scale(0.7)`,
+                                        // Increased spacing slightly to accommodate larger items
+                                        marginLeft: `${(itemCol === 0 ? -1 : 1) * 25}px`, 
+                                        marginTop: `${(itemRow * 20) - 35}px`,
+                                        // Increased scale from 0.7 to 0.9 (~130%)
+                                        transform: `translate(-50%, -50%) rotate(${item.itemIdx % 2 === 0 ? -2 : 2}deg) scale(0.9)`,
                                     };
                                 } else if (step === 3) {
                                     const islandX = item.islandIdx === 0 ? 25 : 75;
