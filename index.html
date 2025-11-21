@@ -1,0 +1,538 @@
+import React, { useState, useEffect } from 'react';
+import { Users, ArrowRight, RefreshCw, Layers, Lightbulb, Play, Map, RotateCw, MessageSquare, LayoutGrid, Maximize } from 'lucide-react';
+
+// --- Data & Config ---
+
+const SEATS = [
+  { id: 0, name: "學生 A", color: "bg-red-100 text-red-700", avatar: "A" },
+  { id: 1, name: "學生 B", color: "bg-orange-100 text-orange-700", avatar: "B" },
+  { id: 2, name: "學生 C", color: "bg-yellow-100 text-yellow-700", avatar: "C" },
+  { id: 3, name: "學生 D", color: "bg-green-100 text-green-700", avatar: "D" },
+  { id: 4, name: "學生 E", color: "bg-blue-100 text-blue-700", avatar: "E" },
+  { id: 5, name: "學生 F", color: "bg-purple-100 text-purple-700", avatar: "F" },
+];
+
+// Generates 3 ideas per round per person
+const generateRoundIdeas = (round, seatId) => {
+  const topics = ["食物", "活動", "環境", "制度", "娛樂", "驚喜"];
+  const actions = ["增加", "改善", "舉辦", "取消", "邀請", "開放"];
+  const nouns = ["炸雞", "音樂", "沙發", "手機", "漫畫", "火鍋", "冷氣", "甜點", "電影", "比賽"];
+  
+  // Deterministic random for demo stability
+  const seed = round * 10 + seatId;
+  const getRand = (arr, offset) => arr[(seed + offset) % arr.length];
+  
+  return [
+    `${getRand(actions, 0)}${getRand(nouns, 0)}`,
+    `${getRand(topics, 1)}變${getRand(actions, 1)}`,
+    `${getRand(nouns, 2)}吃到飽`
+  ];
+};
+
+// KJ Logic Data - Updated for 64 items
+const KJ_CHAOS_POSITIONS = Array.from({ length: 64 }).map(() => ({
+  x: Math.random() * 90 + 5,
+  y: Math.random() * 80 + 10,
+  rotate: Math.random() * 40 - 20
+}));
+
+// 2-Layer Structure: Islands -> Groups -> Items
+// Structure: 2 Islands -> 4 Groups each -> 8 Items each = 64 Items
+const KJ_STRUCTURE = [
+  {
+    id: "island1",
+    title: "大島 A：休閒娛樂系統",
+    color: "bg-blue-50 border-blue-200",
+    groups: [
+      { 
+        title: "藝文活動", 
+        color: "bg-indigo-100 border-indigo-300",
+        items: ["聽歌大會", "電影欣賞", "漫畫閱讀", "讀書會", "才藝表演", "書法比賽", "攝影展", "微電影"] 
+      },
+      { 
+        title: "競賽遊戲", 
+        color: "bg-purple-100 border-purple-300",
+        items: ["大胃王賽", "睡覺比賽", "電動大賽", "發呆大賽", "電競賽", "籃球賽", "猜拳大會", "跑步"] 
+      },
+      {
+        title: "社交互動",
+        color: "bg-pink-100 border-pink-300",
+        items: ["慶生會", "交換禮物", "真心話", "桌遊時間", "聯誼活動", "聊天大會", "英語角", "台語日"]
+      },
+      {
+        title: "戶外探索",
+        color: "bg-cyan-100 border-cyan-300",
+        items: ["校園野餐", "尋寶遊戲", "捉迷藏", "賞花大會", "觀星活動", "戶外寫生", "種樹計畫", "操場露營"]
+      }
+    ]
+  },
+  {
+    id: "island2",
+    title: "大島 B：生活福利系統",
+    color: "bg-orange-50 border-orange-200",
+    groups: [
+      { 
+        title: "飲食升級", 
+        color: "bg-orange-100 border-orange-300",
+        items: ["訂外送", "冰淇淋", "各國美食", "甜點日", "烤肉大會", "火鍋派對", "珍珠奶茶", "披薩日"] 
+      },
+      { 
+        title: "制度放寬", 
+        color: "bg-green-100 border-green-300",
+        items: ["延長午休", "不穿制服", "帶寵物", "交換便當", "校外用餐", "手機解禁", "自由選座", "遲到免罰"] 
+      },
+      {
+        title: "設施改善",
+        color: "bg-teal-100 border-teal-300",
+        items: ["沙發休息區", "遊戲機台", "冷氣強一點", "販賣機", "充電站", "懶人骨頭", "吊床區", "個人包廂"]
+      },
+      {
+        title: "獎勵機制",
+        color: "bg-yellow-100 border-yellow-300",
+        items: ["獎學金", "榮譽卡", "記嘉獎", "抵銷過錯", "老師請客", "免打掃券", "優先選位", "電影票"]
+      }
+    ]
+  }
+];
+
+// Flattened items for rendering chaos
+const ALL_KJ_ITEMS = KJ_STRUCTURE.flatMap((island, islandIdx) => 
+  island.groups.flatMap((group, groupIdx) => 
+    group.items.map((text, itemIdx) => ({
+      id: `${islandIdx}-${groupIdx}-${itemIdx}`,
+      text,
+      islandIdx,
+      groupIdx,
+      itemIdx
+    }))
+  )
+);
+
+// --- Components ---
+
+const Navbar = ({ activeTab, setActiveTab }) => (
+  <div className="bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg shrink-0">
+    <div className="font-bold text-xl flex items-center gap-3">
+      <div className="bg-yellow-500 p-1.5 rounded text-slate-900">
+        <Lightbulb size={20} strokeWidth={2.5} />
+      </div>
+      <span>創意思考教學演示系統</span>
+    </div>
+    <div className="flex gap-2 bg-slate-800 p-1 rounded-lg">
+      <button 
+        onClick={() => setActiveTab('66')}
+        className={`px-4 py-2 rounded-md flex items-center gap-2 transition-all font-medium ${activeTab === '66' ? 'bg-indigo-500 text-white shadow-md' : 'hover:bg-slate-700 text-slate-400'}`}
+      >
+        <RotateCw size={18} /> 66法 (發散)
+      </button>
+      <button 
+        onClick={() => setActiveTab('kj')}
+        className={`px-4 py-2 rounded-md flex items-center gap-2 transition-all font-medium ${activeTab === 'kj' ? 'bg-emerald-500 text-white shadow-md' : 'hover:bg-slate-700 text-slate-400'}`}
+      >
+        <Map size={18} /> KJ法 (聚斂)
+      </button>
+    </div>
+  </div>
+);
+
+const PaperSheet = ({ ideas, rotationIndex, seatIndex }) => {
+    // Position logic
+    const currentHolderIndex = (seatIndex + rotationIndex) % 6;
+    const angle = (currentHolderIndex * 60 - 90) * (Math.PI / 180);
+    const radius = 180;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+
+    return (
+        <div 
+            className="absolute w-36 h-48 bg-white shadow-2xl border border-slate-200 rounded-md transition-all duration-700 ease-in-out flex flex-col overflow-hidden group hover:scale-110 hover:z-50"
+            style={{ 
+                transform: `translate(${x}px, ${y}px) translate(-50%, -50%)`,
+                left: '50%',
+                top: '50%',
+                zIndex: 10
+            }}
+        >
+            <div className="bg-slate-100 text-[10px] px-2 py-1 text-slate-500 font-mono border-b flex justify-between">
+                <span>紙張 #{seatIndex + 1}</span>
+                <span className="font-bold text-indigo-600">{ideas.length} 點子</span>
+            </div>
+            <div className="p-1 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="space-y-1">
+                    {ideas.map((idea, i) => (
+                        <div key={i} className="text-[10px] leading-tight bg-yellow-50 px-1.5 py-1 border-l-2 border-yellow-400 rounded-r animate-fade-in">
+                            {idea}
+                        </div>
+                    ))}
+                </div>
+                {ideas.length === 0 && (
+                    <div className="h-full flex items-center justify-center text-slate-300 text-xs italic">等待輸入...</div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const Demo66 = () => {
+    const [round, setRound] = useState(0);
+    const [papers, setPapers] = useState(Array(6).fill([])); 
+    const [isRotating, setIsRotating] = useState(false);
+    const [statusText, setStatusText] = useState("準備階段：6 人小組，每人一張紙");
+
+    const nextStep = () => {
+        if (isRotating) return;
+
+        if (round >= 6) {
+            setRound(0);
+            setPapers(Array(6).fill([]));
+            setStatusText("已重置");
+            return;
+        }
+
+        // 1. Writing Phase (Generate 3 ideas)
+        setStatusText(`第 ${round + 1} 輪：每人產出 3 個點子 (共 ${ (round + 1) * 18 } 個)`);
+        
+        setTimeout(() => {
+            const newPapers = papers.map((p, paperIndex) => {
+                const currentHolder = (paperIndex + round) % 6;
+                const newIdeas = generateRoundIdeas(round, currentHolder);
+                return [...p, ...newIdeas];
+            });
+            setPapers(newPapers);
+            
+            // 2. Rotation Phase
+            setTimeout(() => {
+                if (round < 5) {
+                    setStatusText("傳遞時間：順時針換紙！");
+                    setIsRotating(true);
+                    setTimeout(() => {
+                        setRound(r => r + 1);
+                        setIsRotating(false);
+                        setStatusText(`準備進入第 ${round + 2} 輪`);
+                    }, 1000);
+                } else {
+                    setRound(r => r + 1);
+                    setStatusText("演示結束！總共產生了 108 個點子！");
+                }
+            }, 800);
+
+        }, 300);
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="bg-white p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+                <div>
+                    <h2 className="font-bold text-xl text-slate-800 flex items-center gap-2">
+                        <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-base">66法</span>
+                        Phillips 66 發散演示
+                    </h2>
+                    <p className="text-slate-500 text-sm mt-1">規則：6人一組 × 6分鐘(輪) × <span className="font-bold text-red-500">每輪3個點子</span> = <span className="font-bold text-slate-800">108個點子</span></p>
+                </div>
+                <div className="flex items-center gap-6">
+                    <div className="text-right hidden md:block">
+                        <div className="text-xs text-slate-400 uppercase tracking-wider">Total Ideas</div>
+                        <div className="text-3xl font-black text-indigo-600 tabular-nums leading-none">
+                            {papers.reduce((acc, p) => acc + p.length, 0)}
+                        </div>
+                    </div>
+                    <div className="h-10 w-px bg-slate-200 mx-2"></div>
+                    <button 
+                        onClick={nextStep}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all active:scale-95"
+                    >
+                        {round === 0 ? <Play size={20}/> : round >= 6 ? <RefreshCw size={20}/> : <ArrowRight size={20}/>}
+                        {round === 0 ? "開始演示" : round >= 6 ? "重新開始" : "下一輪 (寫3個 + 傳)"}
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex-1 relative overflow-hidden bg-slate-100 flex items-center justify-center">
+                {/* Central Decor */}
+                <div className="absolute w-[500px] h-[500px] rounded-full border-[20px] border-white shadow-xl flex items-center justify-center bg-slate-50">
+                    <div className="text-center opacity-10 select-none">
+                         <Users size={120} className="mx-auto mb-4"/>
+                         <div className="text-6xl font-black">6 x 6</div>
+                    </div>
+                </div>
+
+                {/* Seats */}
+                {SEATS.map((seat, index) => {
+                    const angle = (index * 60 - 90) * (Math.PI / 180);
+                    const radius = 300;
+                    const x = Math.cos(angle) * radius;
+                    const y = Math.sin(angle) * radius;
+                    return (
+                        <div 
+                            key={seat.id}
+                            className="absolute flex flex-col items-center justify-center transition-transform duration-500 z-0"
+                            style={{ 
+                                transform: `translate(${x}px, ${y}px) translate(-50%, -50%)`,
+                                left: '50%',
+                                top: '50%',
+                            }}
+                        >
+                            <div className={`w-20 h-20 rounded-full ${seat.color} flex items-center justify-center font-bold text-2xl shadow-lg border-4 border-white z-20 relative`}>
+                                {seat.avatar}
+                                {round > 0 && round <= 6 && (
+                                    <div className="absolute -top-2 -right-2 bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center shadow-sm animate-bounce text-xs font-bold border-2 border-white">
+                                        +3
+                                    </div>
+                                )}
+                            </div>
+                            <div className="mt-3 font-bold text-slate-600 bg-white/90 px-3 py-0.5 rounded-full shadow-sm text-sm backdrop-blur-sm">{seat.name}</div>
+                        </div>
+                    );
+                })}
+
+                {/* Moving Papers */}
+                {papers.map((ideas, i) => (
+                    <PaperSheet 
+                        key={i} 
+                        seatIndex={i} 
+                        rotationIndex={round} 
+                        ideas={ideas} 
+                    />
+                ))}
+
+                {/* Status HUD */}
+                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-slate-800/90 text-white px-8 py-3 rounded-full shadow-xl backdrop-blur-md text-lg font-medium border border-slate-600/50 whitespace-nowrap z-50">
+                    {statusText}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const DemoKJ = () => {
+    const [step, setStep] = useState(0); 
+    // 0: Chaos, 1: Grouping, 2: Naming, 3: Islands
+
+    const steps = [
+        { title: "1. 發散混亂", icon: LayoutGrid, desc: "64個點子" },
+        { title: "2. 小群組歸納", icon: Layers, desc: "8個群組" },
+        { title: "3. 小標題命名", icon: MessageSquare, desc: "定義核心" },
+        { title: "4. 大島嶼整合", icon: Map, desc: "2大系統" },
+    ];
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="bg-white p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+                 <div>
+                    <h2 className="font-bold text-xl text-slate-800 flex items-center gap-2">
+                        <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-base">KJ法</span>
+                        親和圖聚斂演示 (64點子版)
+                    </h2>
+                    <p className="text-slate-500 text-sm mt-1">流程：64點子 → 8個小群組 → 2大島嶼系統 → 完整架構</p>
+                </div>
+                
+                {/* Stepper */}
+                <div className="flex bg-slate-100 p-1 rounded-lg">
+                    {steps.map((s, i) => (
+                        <button 
+                            key={i}
+                            onClick={() => setStep(i)}
+                            className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${step === i ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <s.icon size={16}/>
+                            <span className="hidden md:inline">{s.title}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="flex-1 bg-slate-50 relative overflow-hidden p-8">
+                {/* Background Grid */}
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+                
+                {/* Visualization Area */}
+                <div className="w-full h-full relative transition-all duration-1000 ease-in-out">
+                    
+                    {/* Step 3: Big Islands Background Areas */}
+                    {step === 3 && KJ_STRUCTURE.map((island, idx) => (
+                        <div 
+                            key={island.id}
+                            className={`absolute border-4 border-dashed rounded-[40px] transition-all duration-700 animate-fade-in ${island.color}`}
+                            style={{
+                                left: idx === 0 ? '2%' : '52%',
+                                top: '5%',
+                                width: '46%',
+                                bottom: '5%',
+                            }}
+                        >
+                             <div className="absolute -top-5 left-8 bg-slate-800 text-white px-6 py-2 rounded-full shadow-xl font-bold text-lg flex items-center gap-2 z-20">
+                                <Map size={18} className="text-yellow-400"/>
+                                {island.title}
+                             </div>
+                             {/* Connecting line hint */}
+                             <div className="absolute top-1/2 -right-8 w-16 h-1 bg-slate-300/50 rounded-full hidden lg:block"></div>
+                        </div>
+                    ))}
+
+                    {/* Render Items */}
+                    {ALL_KJ_ITEMS.map((item) => {
+                        // Calculate Position
+                        let style = {};
+                        
+                        if (step === 0) {
+                            // Chaos (64 items scattered)
+                            const pos = KJ_CHAOS_POSITIONS[parseInt(item.id.split('-')[2]) % KJ_CHAOS_POSITIONS.length];
+                            style = {
+                                left: `${pos.x}%`,
+                                top: `${pos.y}%`,
+                                transform: `translate(-50%, -50%) rotate(${pos.rotate}deg) scale(0.8)`,
+                            };
+                        } else if (step === 1 || step === 2) {
+                            // Grouping (8 groups total)
+                            // Grid 4 cols x 2 rows
+                            // total groups = 2 islands * 4 groups = 8
+                            const globalGroupIdx = item.islandIdx * 4 + item.groupIdx;
+                            const col = globalGroupIdx % 4;
+                            const row = Math.floor(globalGroupIdx / 4);
+                            
+                            // Base position for group
+                            const groupX = 12.5 + col * 25;
+                            const groupY = 25 + row * 50;
+
+                            // Item position within group (2 cols x 4 rows within group)
+                            const itemCol = item.itemIdx % 2;
+                            const itemRow = Math.floor(item.itemIdx / 2);
+
+                            style = {
+                                left: `${groupX}%`,
+                                top: `${groupY}%`,
+                                marginLeft: `${(itemCol === 0 ? -1 : 1) * 20}px`,
+                                marginTop: `${(itemRow * 18) - 30}px`,
+                                transform: `translate(-50%, -50%) rotate(${item.itemIdx % 2 === 0 ? -2 : 2}deg) scale(0.7)`,
+                            };
+                        } else if (step === 3) {
+                            // Islands (2 islands, 4 groups inside each)
+                            // Island 0 (Left), Island 1 (Right)
+                            const islandX = item.islandIdx === 0 ? 25 : 75;
+                            
+                            // Inside Island: 2x2 Groups
+                            // Group 0: TL, 1: TR, 2: BL, 3: BR
+                            const inIslandCol = item.groupIdx % 2;
+                            const inIslandRow = Math.floor(item.groupIdx / 2);
+                            
+                            // Offset based on group position inside island
+                            const groupOffsetX = (inIslandCol === 0 ? -1 : 1) * 12;
+                            const groupOffsetY = (inIslandRow === 0 ? -1 : 1) * 20;
+
+                            // Item spread inside group
+                            const itemStackY = (item.itemIdx * 3); // Stack tightly
+
+                            style = {
+                                left: `${islandX + groupOffsetX}%`,
+                                top: `${50 + groupOffsetY}%`,
+                                marginLeft: `${(item.itemIdx % 2 === 0 ? -1 : 1) * 2}px`, // Slight jitter
+                                marginTop: `${itemStackY - 15}px`,
+                                transform: `translate(-50%, -50%) scale(0.65)`,
+                                zIndex: item.itemIdx,
+                            };
+                        }
+
+                        return (
+                            <div 
+                                key={item.id}
+                                className={`absolute w-24 p-1 shadow-sm border border-slate-200 text-center text-[10px] leading-tight font-medium rounded transition-all duration-1000 ease-in-out z-10 flex items-center justify-center h-8 break-words bg-white hover:scale-150 hover:z-50`}
+                                style={style}
+                            >
+                                {item.text}
+                            </div>
+                        );
+                    })}
+
+                    {/* Step 2 & 3: Group Labels */}
+                    {(step >= 2) && KJ_STRUCTURE.flatMap((island, iIdx) => 
+                        island.groups.map((group, gIdx) => {
+                            let style = {};
+                            
+                            if (step === 2) {
+                                const globalGroupIdx = iIdx * 4 + gIdx;
+                                const col = globalGroupIdx % 4;
+                                const row = Math.floor(globalGroupIdx / 4);
+                                style = {
+                                    left: `${12.5 + col * 25}%`,
+                                    top: `${25 + row * 50}%`,
+                                    width: '20%',
+                                    height: '40%',
+                                };
+                            } else {
+                                // Step 3 positions: Follow group position logic inside island
+                                const islandX = iIdx === 0 ? 25 : 75;
+                                const inIslandCol = gIdx % 2;
+                                const inIslandRow = Math.floor(gIdx / 2);
+                                const groupOffsetX = (inIslandCol === 0 ? -1 : 1) * 12;
+                                const groupOffsetY = (inIslandRow === 0 ? -1 : 1) * 20;
+
+                                style = {
+                                    left: `${islandX + groupOffsetX}%`,
+                                    top: `${50 + groupOffsetY}%`,
+                                    width: '20%',
+                                    height: '30%',
+                                };
+                            }
+
+                            return (
+                                <div 
+                                    key={`label-${iIdx}-${gIdx}`}
+                                    className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 pointer-events-none border-2 border-dashed rounded-xl"
+                                    style={{
+                                        ...style,
+                                        borderColor: step === 2 ? '#cbd5e1' : 'transparent' 
+                                    }}
+                                >
+                                    <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm text-white whitespace-nowrap ${step === 3 ? 'bg-slate-500' : 'bg-emerald-600'}`}>
+                                        {group.title}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                    
+                    {/* Info Toast */}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-6 py-3 rounded-full shadow-lg border border-slate-200 text-slate-600 text-sm font-bold animate-fade-in-up flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${step === 3 ? 'bg-yellow-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                        {step === 0 && "狀態：發散混亂 - 64個點子散落一地，完全看不出重點"}
+                        {step === 1 && "狀態：小群組歸納 - 依據相似性，整理出8個類別"}
+                        {step === 2 && "狀態：小標題命名 - 為8個類別定義出核心概念"}
+                        {step === 3 && "狀態：大島嶼整合 - 將8個類別再歸納為2大系統，完成架構"}
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- Main App Shell ---
+
+export default function CreativeThinkingDemo() {
+  const [activeTab, setActiveTab] = useState('66');
+
+  return (
+    <div className="h-screen w-full bg-slate-200 flex flex-col font-sans overflow-hidden text-slate-900">
+        <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <div className="flex-1 m-2 md:m-4 bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-300">
+            {activeTab === '66' ? <Demo66 /> : <DemoKJ />}
+        </div>
+        <style>{`
+            @keyframes fade-in {
+                from { opacity: 0; transform: translateY(5px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes fade-in-up {
+                from { opacity: 0; transform: translate(-50%, 20px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
+            }
+            /* Custom Scrollbar for papers */
+            .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+            .custom-scrollbar::-webkit-scrollbar-track { bg: transparent; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        `}</style>
+    </div>
+  );
+}
